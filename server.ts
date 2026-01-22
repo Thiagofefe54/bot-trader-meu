@@ -8,14 +8,19 @@ import path from 'path';
 // --- CONFIGURAÇÕES ---
 dotenv.config();
 const PORTA = 3000;
-const PAR = 'SOL/USDT';    
-const VALOR_COMPRA = 12.00; 
+
+// 👇 AQUI VOCÊ ESCOLHE A MOEDA (Pode ser BTC, SOL, DOGE, ETH...)
+const PAR = 'SOL/USDT';     
+const VALOR_COMPRA = 12.00; // Valor em Dólar por compra
+
+// Separa os nomes automaticamente (Ex: Pega "SOL" e "USDT")
+const [MOEDA_BASE, MOEDA_COTACAO] = PAR.split('/'); 
 
 // --- VARIÁVEIS DO ROBÔ ---
 let botLigado = false;
 let comprei = false;
 let precoPago = 0;
-let carteira = { USDT: 0, BTC: 0 };
+let carteira = { dolar: 0, moeda: 0 }; // Agora é genérico
 let lucroTotal = 0;
 
 // --- SERVIDOR ---
@@ -23,7 +28,6 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-// Serve os arquivos do site
 app.use(express.static(path.join(__dirname, '.')));
 
 // --- BINANCE ---
@@ -34,8 +38,11 @@ const exchange = new ccxt.binance({
 });
 
 // --- QUANDO O SITE CONECTA ---
-io.on('connection', (socket) => {
-    console.log('💻 Site conectado!');
+io.on('connection', async (socket) => {
+    console.log('💻 Site conectado! Atualizando dados...');
+    
+    // Já busca o saldo na hora que abre o site pra não ficar zerado
+    await atualizarSaldo();
     enviarDados(); 
 
     socket.on('toggleBot', (ligar: boolean) => {
@@ -47,60 +54,73 @@ io.on('connection', (socket) => {
     });
 });
 
-// --- FUNÇÃO QUE RODA O ROBÔ ---
+// --- FUNÇÃO AUXILIAR PRA LER SALDO ---
+async function atualizarSaldo() {
+    try {
+        const saldoRaw = await exchange.fetchBalance();
+        // Pega o saldo da moeda que escolhemos lá em cima
+        carteira.dolar = saldoRaw[MOEDA_COTACAO] ? saldoRaw[MOEDA_COTACAO].free : 0;
+        carteira.moeda = saldoRaw[MOEDA_BASE] ? saldoRaw[MOEDA_BASE].free : 0;
+    } catch (error) {
+        console.log("Erro ao ler saldo (pode ser conexão)...");
+    }
+}
+
+// --- LOOP DO ROBÔ ---
 async function rodarRobo() {
     if (!botLigado) return;
 
     try {
-        // 1. ATUALIZA SALDO E PREÇO
-        const saldoRaw = await exchange.fetchBalance();
+        // 1. ATUALIZA DADOS
+        await atualizarSaldo();
         const ticker = await exchange.fetchTicker(PAR);
         const precoAgora = ticker.last as number;
 
-        // ATUALIZA A CARTEIRA
-        carteira.USDT = saldoRaw.USDT ? saldoRaw.USDT.free : 0;
-        carteira.BTC = saldoRaw.BTC ? saldoRaw.BTC.free : 0;
-        
-        // --- DETETIVE DE DINHEIRO (MOSTRA NO TERMINAL) ---
-        // Se tiver BRL e não tiver USDT, avisa!
-        if (carteira.USDT < 5 && saldoRaw['BRL'] && saldoRaw['BRL'].free > 10) {
-            console.log(`⚠️ ALERTA: Você tem R$ ${saldoRaw['BRL'].free} REAIS, mas precisa converter para DÓLAR (USDT)!`);
-            io.emit('log', { tipo: 'erro', msg: '⚠️ ERRO: Saldo está em REAIS. Converta para USDT na Binance!' });
+        enviarDados(); // Atualiza a tela do site
+
+        // --- DETETIVE DE DINHEIRO ---
+        // Se tiver pouco Dólar e tiver moeda comprada, ok. Se tiver tudo zerado, avisa.
+        if (carteira.dolar < 5 && carteira.moeda == 0) {
+            console.log(`⚠️ SALDO BAIXO EM DÓLAR!`);
         }
 
-        enviarDados(); // Manda pro site
-
         // 2. LÓGICA DE COMPRA
-        if (!comprei && carteira.USDT >= VALOR_COMPRA) {
-            io.emit('log', { tipo: 'compra', msg: `🛒 Comprando $${VALOR_COMPRA} de BTC...` });
+        // Verifica se tem Dólar suficiente E se ainda não comprou
+        if (!comprei && carteira.dolar >= VALOR_COMPRA) {
+            io.emit('log', { tipo: 'compra', msg: `🛒 Comprando $${VALOR_COMPRA} de ${MOEDA_BASE}...` });
             
-            // ORDEM REAL
+            // Compra a Mercado
             await exchange.createMarketBuyOrder(PAR, VALOR_COMPRA / precoAgora);
             
             comprei = true;
             precoPago = precoAgora;
-            io.emit('log', { tipo: 'sucesso', msg: `✅ COMPRA FEITA! Preço: $${precoAgora}` });
+            io.emit('log', { tipo: 'sucesso', msg: `✅ COMPRA DE ${MOEDA_BASE} FEITA! Preço: $${precoAgora}` });
         }
         
         // 3. LÓGICA DE VENDA (LUCRO 0.5%)
-        else if (comprei && carteira.BTC > 0.0001) {
+        // Verifica se já comprou E se tem moeda na carteira
+        else if (comprei && carteira.moeda > 0) {
             const lucroPorcentagem = (precoAgora - precoPago) / precoPago;
             
-            // Mostra status no log as vezes
-            console.log(`Variando: ${(lucroPorcentagem * 100).toFixed(2)}%`);
+            console.log(`Variando ${MOEDA_BASE}: ${(lucroPorcentagem * 100).toFixed(2)}%`);
 
+            // SE BATER 0.5% DE LUCRO
             if (lucroPorcentagem >= 0.005) { 
-                io.emit('log', { tipo: 'venda', msg: `🚀 VENDENDO COM LUCRO!` });
+                io.emit('log', { tipo: 'venda', msg: `🚀 VENDENDO ${MOEDA_BASE} COM LUCRO!` });
                 
-                // VENDA REAL
-                await exchange.createMarketSellOrder(PAR, carteira.BTC);
+                // Vende TUDO o que tem da moeda
+                await exchange.createMarketSellOrder(PAR, carteira.moeda);
                 
-                const lucroDolar = (carteira.BTC * precoAgora) - (carteira.BTC * precoPago);
+                const lucroDolar = (carteira.moeda * precoAgora) - (carteira.moeda * precoPago);
                 lucroTotal += lucroDolar;
+                
+                // Reseta para comprar de novo
                 comprei = false;
                 precoPago = 0;
                 
                 io.emit('log', { tipo: 'sucesso', msg: `💰 LUCRO NO BOLSO: $${lucroDolar.toFixed(2)}` });
+                
+                // Opcional: Desliga o bot após o lucro (se quiser que ele continue, apague as 2 linhas abaixo)
                 botLigado = false; 
                 io.emit('statusBot', false);
             }
@@ -108,20 +128,16 @@ async function rodarRobo() {
 
     } catch (erro: any) {
         console.error("ERRO:", erro.message);
-        io.emit('log', { tipo: 'erro', msg: `❌ ERRO NA BINANCE: ${erro.message}` });
-        
-        // Se for erro de IP, avisa
-        if (erro.message.includes('IP')) {
-            io.emit('log', { tipo: 'erro', msg: '🔒 ERRO DE IP: O IP do seu PC mudou ou não foi salvo.' });
-        }
+        io.emit('log', { tipo: 'erro', msg: `❌ ERRO: ${erro.message}` });
     }
 
-    if (botLigado) setTimeout(rodarRobo, 5000);
+    // Roda de novo em 3 segundos (mais rápido pra Solana)
+    if (botLigado) setTimeout(rodarRobo, 3000);
 }
 
 function enviarDados() {
     io.emit('dados', {
-        saldo: carteira.USDT.toFixed(2),
+        saldo: carteira.dolar.toFixed(2),
         lucro: lucroTotal.toFixed(2),
         ligado: botLigado
     });
@@ -129,6 +145,6 @@ function enviarDados() {
 
 // INICIA
 server.listen(PORTA, () => {
-    console.log(`\n🚀 SERVIDOR ONLINE: http://localhost:${PORTA}`);
+    console.log(`\n🚀 SERVIDOR ONLINE (${PAR}): http://localhost:${PORTA}`);
     console.log("--------------------------------------------------");
 });
