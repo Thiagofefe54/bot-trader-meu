@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Painel Bot Trader Real</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="logo-area">
+                <h1>🤖 Bot Trader Pro</h1>
+                <p>Status: <span id="status-texto" class="status-off">DESLIGADO 🔴</span></p>
+            </div>
+            <button id="btn-power" onclick="alternarBot()">LIGAR SISTEMA 🔌</button>
+        </header>
+
+        <div class="dashboard-grid">
+            <div class="card">
+                <h3>💰 Saldo em Dólar (USDT)</h3>
+                <div class="valor" id="saldo-atual">$ 0.00</div>
+                <small>Capital Disponível</small>
+            </div>
+            <div class="card destaque">
+                <h3>📈 Lucro Acumulado</h3>
+                <div class="valor verde" id="lucro-total">+$ 0.00</div>
+                <small>Sessão Atual</small>
+            </div>
+        </div>
+
+        <div class="log-section">
+            <h3>📜 Logs do Sistema</h3>
+            <div class="log-box" id="log-box">
+                <div class="log-item">Aguardando conexão com o servidor...</div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>

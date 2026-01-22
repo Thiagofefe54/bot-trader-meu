@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    /* Configurações Básicas */
+    "target": "es2016",
+    "module": "commonjs",             /* <--- Esse é o segredo pra rodar liso */
+    "esModuleInterop": true,          /* <--- A LINHA MÁGICA QUE FALTAVA */
+    "forceConsistentCasingInFileNames": true,
+    "strict": false,                  /* <--- Sem regras chatas */
+    "skipLibCheck": true,             /* <--- Ignora erros dentro das bibliotecas */
+    
+    /* Configurações de Saída */
+    "sourceMap": true,
+    "outDir": "./dist",
+    "rootDir": "./"
+  }
+}
