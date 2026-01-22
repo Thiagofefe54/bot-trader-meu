@@ -3,41 +3,75 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Painel Bot Trader Real</title>
+    <title>Bot Trader Pro 3.0</title>
     <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
-    <div class="container">
+
+    <div class="app-container">
         <header>
-            <div class="logo-area">
-                <h1>🤖 Bot Trader Pro</h1>
-                <p>Status: <span id="status-texto" class="status-off">DESLIGADO 🔴</span></p>
-            </div>
-            <button id="btn-power" onclick="alternarBot()">LIGAR SISTEMA 🔌</button>
+            <div class="logo">🤖 <span>TraderPro</span></div>
+            <button id="btnSettings" class="btn-icon">⚙️</button>
         </header>
 
+        <div class="status-bar">
+            <span class="status-badge offline" id="statusBadge">DESLIGADO</span>
+            <span class="watching-badge" id="moedaAtualBadge">...</span>
+        </div>
+
         <div class="dashboard-grid">
-            <div class="card">
-                <h3>💰 Saldo em Dólar (USDT)</h3>
-                <div class="valor" id="saldo-atual">$ 0.00</div>
-                <small>Capital Disponível</small>
+            <div class="card saldo-card">
+                <span class="card-label">Saldo Disponível</span>
+                <h2 id="saldo">$ 0.00</h2>
             </div>
-            <div class="card destaque">
-                <h3>📈 Lucro Acumulado</h3>
-                <div class="valor verde" id="lucro-total">+$ 0.00</div>
-                <small>Sessão Atual</small>
+            <div class="card lucro-card">
+                <span class="card-label">Lucro Sessão</span>
+                <h2 id="lucro">+$ 0.00</h2>
             </div>
         </div>
 
-        <div class="log-section">
-            <h3>📜 Logs do Sistema</h3>
-            <div class="log-box" id="log-box">
-                <div class="log-item">Aguardando conexão com o servidor...</div>
+        <div class="control-panel">
+            <button id="btnPower" class="btn-power">
+                <span class="icon">⚡</span> INICIAR ROBÔ
+            </button>
+        </div>
+
+        <div class="logs-container">
+            <h3>Terminal de Operações</h3>
+            <div id="logs" class="terminal-window">
+                <div class="log-line info">Sistema pronto...</div>
             </div>
         </div>
     </div>
 
-    <script src="/socket.io/socket.io.js"></script>
+    <div id="modalSettings" class="modal hidden">
+        <div class="modal-content">
+            <h3>⚙️ Configuração do Robô</h3>
+            
+            <div class="input-group">
+                <label>Valor por Compra (USDT)</label>
+                <input type="number" id="inputValor" value="12" min="12">
+            </div>
+
+            <div class="moedas-selector">
+                <label>Selecione as Moedas para Operar:</label>
+                <div class="grid-moedas" id="gridMoedas">
+                    </div>
+            </div>
+
+            <div class="resumo-financeiro" id="resumoFinanceiro">
+                Necessário: $0.00
+            </div>
+
+            <div class="modal-actions">
+                <button id="btnCancelar" class="btn-secondary">Cancelar</button>
+                <button id="btnSalvar" class="btn-primary">Salvar Configuração</button>
+            </div>
+        </div>
+    </div>
+
     <script src="script.js"></script>
 </body>
 </html>

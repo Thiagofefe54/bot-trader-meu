@@ -5,146 +5,137 @@ import ccxt from 'ccxt';
 import * as dotenv from 'dotenv';
 import path from 'path';
 
-// --- CONFIGURAÇÕES ---
 dotenv.config();
-const PORTA = 3000;
+const PORTA = process.env.PORT || 3000;
 
-// 👇 AQUI VOCÊ ESCOLHE A MOEDA (Pode ser BTC, SOL, DOGE, ETH...)
-const PAR = 'SOL/USDT';     
-const VALOR_COMPRA = 12.00; // Valor em Dólar por compra
+// --- CONFIGURAÇÃO INICIAL (Padrão) ---
+let configClient = {
+    pares: ['BTC/USDT'], // Começa só com Bitcoin pra não travar
+    valorCompra: 12.00   // Valor padrão
+};
 
-// Separa os nomes automaticamente (Ex: Pega "SOL" e "USDT")
-const [MOEDA_BASE, MOEDA_COTACAO] = PAR.split('/'); 
-
-// --- VARIÁVEIS DO ROBÔ ---
 let botLigado = false;
-let comprei = false;
-let precoPago = 0;
-let carteira = { dolar: 0, moeda: 0 }; // Agora é genérico
+let indiceAtual = 0;
 let lucroTotal = 0;
+let memoriaMoedas: any = {};
 
-// --- SERVIDOR ---
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
 app.use(express.static(path.join(__dirname, '.')));
 
-// --- BINANCE ---
 const exchange = new ccxt.binance({
     apiKey: process.env.BINANCE_API_KEY,
     secret: process.env.BINANCE_SECRET,
     enableRateLimit: true
 });
 
-// --- QUANDO O SITE CONECTA ---
 io.on('connection', async (socket) => {
-    console.log('💻 Site conectado! Atualizando dados...');
-    
-    // Já busca o saldo na hora que abre o site pra não ficar zerado
-    await atualizarSaldo();
-    enviarDados(); 
+    console.log('💻 Cliente Conectado!');
+    enviarDados();
+
+    // RECEBE A NOVA CONFIGURAÇÃO DO SITE
+    socket.on('salvarConfig', (novaConfig) => {
+        configClient = novaConfig;
+        
+        // Reinicia a memória das moedas novas
+        memoriaMoedas = {};
+        configClient.pares.forEach(par => {
+            memoriaMoedas[par] = { comprei: false, precoPago: 0 };
+        });
+        
+        io.emit('log', { tipo: 'info', msg: `⚙️ Configuração Atualizada! Moedas: ${configClient.pares.length} | Valor: $${configClient.valorCompra}` });
+        enviarDados(); // Atualiza o front com os novos dados
+    });
 
     socket.on('toggleBot', (ligar: boolean) => {
         botLigado = ligar;
-        const msg = botLigado ? '🟢 SISTEMA INICIADO' : '🔴 SISTEMA PAUSADO';
+        const msg = botLigado ? '🚀 SISTEMA INICIADO' : '⏸️ SISTEMA PAUSADO';
         io.emit('log', { tipo: 'info', msg: msg });
-        console.log(msg);
         if (botLigado) rodarRobo();
     });
 });
 
-// --- FUNÇÃO AUXILIAR PRA LER SALDO ---
-async function atualizarSaldo() {
-    try {
-        const saldoRaw = await exchange.fetchBalance();
-        // Pega o saldo da moeda que escolhemos lá em cima
-        carteira.dolar = saldoRaw[MOEDA_COTACAO] ? saldoRaw[MOEDA_COTACAO].free : 0;
-        carteira.moeda = saldoRaw[MOEDA_BASE] ? saldoRaw[MOEDA_BASE].free : 0;
-    } catch (error) {
-        console.log("Erro ao ler saldo (pode ser conexão)...");
-    }
-}
-
-// --- LOOP DO ROBÔ ---
 async function rodarRobo() {
     if (!botLigado) return;
+    
+    // Se o cliente desmarcou tudo, não roda
+    if (configClient.pares.length === 0) {
+        io.emit('log', { tipo: 'erro', msg: '⚠️ Nenhuma moeda selecionada!' });
+        botLigado = false;
+        enviarDados();
+        return;
+    }
 
     try {
-        // 1. ATUALIZA DADOS
-        await atualizarSaldo();
-        const ticker = await exchange.fetchTicker(PAR);
+        // Garante que o índice não estoure o tamanho da lista nova
+        if (indiceAtual >= configClient.pares.length) indiceAtual = 0;
+
+        const parAtual = configClient.pares[indiceAtual];
+        const [MOEDA_BASE, MOEDA_COTACAO] = parAtual.split('/');
+
+        // 1. DADOS DE MERCADO
+        const ticker = await exchange.fetchTicker(parAtual);
         const precoAgora = ticker.last as number;
-
-        enviarDados(); // Atualiza a tela do site
-
-        // --- DETETIVE DE DINHEIRO ---
-        // Se tiver pouco Dólar e tiver moeda comprada, ok. Se tiver tudo zerado, avisa.
-        if (carteira.dolar < 5 && carteira.moeda == 0) {
-            console.log(`⚠️ SALDO BAIXO EM DÓLAR!`);
-        }
-
-        // 2. LÓGICA DE COMPRA
-        // Verifica se tem Dólar suficiente E se ainda não comprou
-        if (!comprei && carteira.dolar >= VALOR_COMPRA) {
-            io.emit('log', { tipo: 'compra', msg: `🛒 Comprando $${VALOR_COMPRA} de ${MOEDA_BASE}...` });
-            
-            // Compra a Mercado
-            await exchange.createMarketBuyOrder(PAR, VALOR_COMPRA / precoAgora);
-            
-            comprei = true;
-            precoPago = precoAgora;
-            io.emit('log', { tipo: 'sucesso', msg: `✅ COMPRA DE ${MOEDA_BASE} FEITA! Preço: $${precoAgora}` });
-        }
         
-        // 3. LÓGICA DE VENDA (LUCRO 0.5%)
-        // Verifica se já comprou E se tem moeda na carteira
-        else if (comprei && carteira.moeda > 0) {
-            const lucroPorcentagem = (precoAgora - precoPago) / precoPago;
-            
-            console.log(`Variando ${MOEDA_BASE}: ${(lucroPorcentagem * 100).toFixed(2)}%`);
+        // 2. SALDO
+        const saldoRaw = await exchange.fetchBalance();
+        const saldoDolar = saldoRaw[MOEDA_COTACAO] ? saldoRaw[MOEDA_COTACAO].free : 0;
+        const saldoMoeda = saldoRaw[MOEDA_BASE] ? saldoRaw[MOEDA_BASE].free : 0;
 
-            // SE BATER 0.5% DE LUCRO
-            if (lucroPorcentagem >= 0.005) { 
-                io.emit('log', { tipo: 'venda', msg: `🚀 VENDENDO ${MOEDA_BASE} COM LUCRO!` });
-                
-                // Vende TUDO o que tem da moeda
-                await exchange.createMarketSellOrder(PAR, carteira.moeda);
-                
-                const lucroDolar = (carteira.moeda * precoAgora) - (carteira.moeda * precoPago);
+        // Inicializa memória se não existir
+        if (!memoriaMoedas[parAtual]) memoriaMoedas[parAtual] = { comprei: false, precoPago: 0 };
+        const memoria = memoriaMoedas[parAtual];
+
+        // ENVIA DADOS COMPLETOS PRO SITE
+        io.emit('dados', { 
+            saldo: saldoDolar.toFixed(2), 
+            lucro: lucroTotal.toFixed(2), 
+            ligado: botLigado,
+            config: configClient, // Manda a config de volta pro site saber o que ta rolando
+            moedaAtual: parAtual
+        });
+
+        console.log(`🔎 ${parAtual} ($${precoAgora})`);
+
+        // --- COMPRA ---
+        if (!memoria.comprei && saldoDolar >= configClient.valorCompra) {
+            io.emit('log', { tipo: 'compra', msg: `🛒 ${parAtual}: Comprando a $${precoAgora}...` });
+            await exchange.createMarketBuyOrder(parAtual, configClient.valorCompra / precoAgora);
+            memoriaMoedas[parAtual].comprei = true;
+            memoriaMoedas[parAtual].precoPago = precoAgora;
+            io.emit('log', { tipo: 'sucesso', msg: `✅ ${MOEDA_BASE} COMPRADO!` });
+        }
+
+        // --- VENDA (0.5% Lucro) ---
+        else if (memoria.comprei && saldoMoeda > 0) {
+            const precoPago = memoria.precoPago;
+            const lucroPorcentagem = (precoAgora - precoPago) / precoPago;
+
+            if (lucroPorcentagem >= 0.005) {
+                io.emit('log', { tipo: 'venda', msg: `🚀 ${parAtual}: LUCRO ${(lucroPorcentagem * 100).toFixed(2)}%! Vendendo...` });
+                await exchange.createMarketSellOrder(parAtual, saldoMoeda);
+                const lucroDolar = (saldoMoeda * precoAgora) - (saldoMoeda * precoPago);
                 lucroTotal += lucroDolar;
-                
-                // Reseta para comprar de novo
-                comprei = false;
-                precoPago = 0;
-                
-                io.emit('log', { tipo: 'sucesso', msg: `💰 LUCRO NO BOLSO: $${lucroDolar.toFixed(2)}` });
-                
-                // Opcional: Desliga o bot após o lucro (se quiser que ele continue, apague as 2 linhas abaixo)
-                botLigado = false; 
-                io.emit('statusBot', false);
+                memoriaMoedas[parAtual].comprei = false;
+                memoriaMoedas[parAtual].precoPago = 0;
+                io.emit('log', { tipo: 'sucesso', msg: `💰 ${MOEDA_BASE} VENDIDO! Lucro: $${lucroDolar.toFixed(2)}` });
             }
         }
 
     } catch (erro: any) {
-        console.error("ERRO:", erro.message);
-        io.emit('log', { tipo: 'erro', msg: `❌ ERRO: ${erro.message}` });
+        console.log('Erro:', erro.message);
     }
 
-    // Roda de novo em 3 segundos (mais rápido pra Solana)
+    indiceAtual++;
     if (botLigado) setTimeout(rodarRobo, 3000);
 }
 
 function enviarDados() {
-    io.emit('dados', {
-        saldo: carteira.dolar.toFixed(2),
-        lucro: lucroTotal.toFixed(2),
-        ligado: botLigado
-    });
+    io.emit('statusBot', { ligado: botLigado, config: configClient });
 }
 
-// INICIA
 server.listen(PORTA, () => {
-    console.log(`\n🚀 SERVIDOR ONLINE (${PAR}): http://localhost:${PORTA}`);
-    console.log("--------------------------------------------------");
+    console.log(`SERVIDOR ON NA PORTA ${PORTA}`);
 });
