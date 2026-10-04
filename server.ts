@@ -38,7 +38,7 @@ io.on('connection', async (socket) => {
 
     // RECEBE A NOVA CONFIGURAÇÃO DO SITE
     socket.on('salvarConfig', (novaConfig) => {
-        if (botLigado || cicloAtivo || Object.values(memoriaMoedas).some((m: any) => m.comprei)) {
+        if (botLigado || cicloAtivo || Object.keys(memoriaMoedas).some(key => memoriaMoedas[key].comprei)) {
             socket.emit('log', { tipo: 'erro', msg: 'Pause o bot e resolva posições abertas antes de alterar a configuração.' });
             return;
         }
