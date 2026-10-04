@@ -1,54 +1,59 @@
-🤖 Dev Feijo — Bot Trader Cripto
+# Bot Trader Cripto
 
-Bot automatizado de compra e venda de criptomoedas com interface web, desenvolvido em TypeScript.
+Estudo de automação de operações de criptomoedas com interface web.
 
+![Status](https://img.shields.io/badge/status-n%C3%A3o%20finalizado-orange?style=flat-square)
 
-📌 Sobre o Projeto
-Bot trader pessoal que realiza operações de compra e venda de criptomoedas de forma autônoma, conectado diretamente à API da Binance. Possui interface web para seleção da moeda desejada, sem necessidade de mexer no código.
-Projeto iniciado com foco em Solana (SOL) e expandido para suporte a múltiplas criptomoedas.
+**Tecnologias:** Node.js · TypeScript · Express · Socket.IO · CCXT
 
-✨ Funcionalidades
+## Proposta e estado atual
 
-📈 Compra e venda automática de criptomoedas
-🖥️ Interface web para seleção da moeda
-🔗 Integração com a API oficial da Binance
-🌐 Servidor local para comunicação entre interface e bot
-💱 Suporte a múltiplas criptomoedas (SOL, e outras)
+A ideia é acompanhar múltiplas moedas e controlar uma estratégia pela interface. O projeto reúne experimentos de consulta, simulação e operação real. **Ainda não está finalizado e não está pronto para uso em produção.**
 
+## Arquivos principais
 
-🛠️ Tecnologias
-TecnologiaUsoTypeScriptLógica do bot e servidorNode.jsAmbiente de execuçãoHTML/CSSInterface webJavaScriptScripts da interfaceBinance APIDados de mercado e execução de ordens
+| Arquivo | Finalidade |
+|---|---|
+| `index.ts` | Consulta pública de preço |
+| `multi.ts` | Simulação de carteira com cotações externas |
+| `real.ts` | Consulta autenticada de saldo |
+| `server.ts` | Servidor da interface; pode emitir ordens reais |
+| `index.html`, `script.js`, `style.css` | Interface web |
 
-📁 Estrutura do Projeto
-feijosystems/
-├── index.html        # Interface web
-├── style.css         # Estilo da interface
-├── script.js         # Scripts da interface
-├── index.ts          # Entrada principal do bot
-├── multi.ts          # Suporte a múltiplas moedas
-├── real.ts           # Lógica de operações reais
-├── server.ts         # Servidor local (interface <-> bot)
-├── package.json      # Dependências
-└── tsconfig.json     # Configuração TypeScript
+## Instalação
 
-⚙️ Como Rodar
-bash# Clone o repositório
-git clone https://github.com/feijosystems/feijosystems.git
+Requer Node.js com npm.
 
-# Instale as dependências
-npm install
+```sh
+git clone https://github.com/Thiagofefe54/bot-trader-meu.git
+cd bot-trader-meu
+npm ci
+npm run check
+```
 
-# Configure suas chaves da Binance
-# Crie um arquivo .env com:
-# BINANCE_API_KEY=sua_chave
-# BINANCE_SECRET=seu_secret
+Para consultar uma cotação ou executar a simulação:
 
-# Rode o servidor
-npx ts-node server.ts
-Acesse http://localhost:3000 e escolha a moeda pela interface.
+```sh
+npm run quote
+npm run simulate
+```
 
-⚠️ Aviso
-Este projeto foi desenvolvido para fins educacionais e de aprendizado. Operações com criptomoedas envolvem risco financeiro. Use com responsabilidade.
+A simulação roda continuamente; use Ctrl+C para encerrá-la. Não há promessa de resultado financeiro.
 
-👨‍💻 Autor
-Feito por Thiago Feijó — LinkedIn · GitHub
+## Interface e configuração
+
+Copie `.env.example` para `.env` e preencha suas próprias variáveis. `npm start` inicia o servidor em http://localhost:3000. O servidor fica limitado ao endereço local por padrão. A interface **não é um simulador**: acionar o bot com credenciais válidas pode comprar e vender ativos reais. Não publique o servidor nem compartilhe chaves.
+
+## Pendências
+
+- [ ] Separar operação real da simulação na interface.
+- [ ] Implementar autenticação para os controles.
+- [ ] Persistir e reconciliar posições e ordens após reinícios.
+- [ ] Controlar quantidade por operação, taxas, precisão e limites da corretora.
+- [ ] Revisar o lucro exibido e testar recuperação de falhas.
+
+A venda atual ainda usa o saldo livre da moeda; pode incluir saldo anterior à execução do bot. A estratégia e a integração precisam de revisão antes de operar.
+
+---
+
+Projeto de [Thiago Feijó](https://github.com/Thiagofefe54).

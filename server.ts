@@ -15,6 +15,7 @@ let configClient = {
 };
 
 let botLigado = false;
+let cicloAtivo = false;
 let indiceAtual = 0;
 let lucroTotal = 0;
 let memoriaMoedas: any = {};
@@ -37,7 +38,17 @@ io.on('connection', async (socket) => {
 
     // RECEBE A NOVA CONFIGURAÇÃO DO SITE
     socket.on('salvarConfig', (novaConfig) => {
-        configClient = novaConfig;
+        if (botLigado || cicloAtivo || Object.values(memoriaMoedas).some((m: any) => m.comprei)) {
+            socket.emit('log', { tipo: 'erro', msg: 'Pause o bot e resolva posições abertas antes de alterar a configuração.' });
+            return;
+        }
+        if (!novaConfig || !Array.isArray(novaConfig.pares) || novaConfig.pares.length === 0 ||
+            !novaConfig.pares.every((p: unknown) => typeof p === 'string' && /^[A-Z0-9]+\/[A-Z0-9]+$/.test(p)) ||
+            typeof novaConfig.valorCompra !== 'number' || !Number.isFinite(novaConfig.valorCompra) || novaConfig.valorCompra <= 0) {
+            socket.emit('log', { tipo: 'erro', msg: 'Configuração inválida.' });
+            return;
+        }
+        configClient = { pares: [...new Set(novaConfig.pares)] as string[], valorCompra: novaConfig.valorCompra };
         
         // Reinicia a memória das moedas novas
         memoriaMoedas = {};
@@ -50,6 +61,8 @@ io.on('connection', async (socket) => {
     });
 
     socket.on('toggleBot', (ligar: boolean) => {
+        if (typeof ligar !== 'boolean') return;
+        if (ligar === botLigado) return;
         botLigado = ligar;
         const msg = botLigado ? '🚀 SISTEMA INICIADO' : '⏸️ SISTEMA PAUSADO';
         io.emit('log', { tipo: 'info', msg: msg });
@@ -58,7 +71,7 @@ io.on('connection', async (socket) => {
 });
 
 async function rodarRobo() {
-    if (!botLigado) return;
+    if (!botLigado || cicloAtivo) return;
     
     // Se o cliente desmarcou tudo, não roda
     if (configClient.pares.length === 0) {
@@ -68,6 +81,7 @@ async function rodarRobo() {
         return;
     }
 
+    cicloAtivo = true;
     try {
         // Garante que o índice não estoure o tamanho da lista nova
         if (indiceAtual >= configClient.pares.length) indiceAtual = 0;
@@ -99,6 +113,8 @@ async function rodarRobo() {
 
         console.log(`🔎 ${parAtual} ($${precoAgora})`);
 
+        if (!botLigado) return;
+
         // --- COMPRA ---
         if (!memoria.comprei && saldoDolar >= configClient.valorCompra) {
             io.emit('log', { tipo: 'compra', msg: `🛒 ${parAtual}: Comprando a $${precoAgora}...` });
@@ -126,16 +142,20 @@ async function rodarRobo() {
 
     } catch (erro: any) {
         console.log('Erro:', erro.message);
+    } finally {
+        indiceAtual++;
+        if (botLigado) {
+            setTimeout(() => { cicloAtivo = false; rodarRobo(); }, 3000);
+        } else {
+            cicloAtivo = false;
+        }
     }
-
-    indiceAtual++;
-    if (botLigado) setTimeout(rodarRobo, 3000);
 }
 
 function enviarDados() {
     io.emit('statusBot', { ligado: botLigado, config: configClient });
 }
 
-server.listen(PORTA, () => {
+server.listen(Number(PORTA), process.env.HOST || '127.0.0.1', () => {
     console.log(`SERVIDOR ON NA PORTA ${PORTA}`);
 });

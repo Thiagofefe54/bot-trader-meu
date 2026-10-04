@@ -75,6 +75,11 @@ btnSalvar.onclick = () => {
         return;
     }
 
+    if (!Number.isFinite(valor) || valor <= 0) {
+        alert('Informe um valor de compra maior que zero.');
+        return;
+    }
+
     // Manda pro Servidor
     socket.emit('salvarConfig', { pares: selecionadas, valorCompra: valor });
     modalSettings.classList.add('hidden');
@@ -120,4 +125,9 @@ socket.on('log', (data) => {
     div.innerText = `[${new Date().toLocaleTimeString()}] ${data.msg}`;
     logsDiv.appendChild(div);
     logsDiv.scrollTop = logsDiv.scrollHeight;
+});
+
+socket.on('statusBot', (data) => {
+    sistemaLigado = Boolean(data.ligado);
+    atualizarVisual(sistemaLigado);
 });
